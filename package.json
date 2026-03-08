@@ -1,0 +1,12 @@
+{
+  "name": "llm-trace-phoenix",
+  "version": "1.0.0",
+  "description": "OpenClaw plugin: send all LLM input/output traces to Arize Phoenix via OTLP",
+  "type": "module",
+  "main": "index.ts",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "id": "llm-trace-phoenix",
+  "name": "LLM Trace → Phoenix",
+  "description": "Send all LLM input/output traces to Arize Phoenix for observability. View prompts, responses, and token usage in Phoenix UI.",
+  "version": "1.0.0",
+  "kind": "integration",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "phoenixUrl": {
+        "type": "string",
+        "description": "Phoenix OTLP HTTP endpoint base URL (default: http://localhost:4318)"
+      },
+      "projectName": {
+        "type": "string",
+        "description": "Phoenix project name to group traces under (default: openclaw)"
+      }
+    }
+  },
+  "uiHints": {
+    "phoenixUrl": {
+      "label": "Phoenix OTLP URL",
+      "placeholder": "http://localhost:4318",
+      "help": "Base URL of your Phoenix OTLP HTTP endpoint"
+    },
+    "projectName": {
+      "label": "Project Name",
+      "placeholder": "openclaw",
+      "help": "Project name shown in Phoenix UI for grouping traces"
+    }
+  }
+}
