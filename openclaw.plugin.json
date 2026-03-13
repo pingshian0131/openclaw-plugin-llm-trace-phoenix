@@ -10,7 +10,7 @@
     "properties": {
       "phoenixUrl": {
         "type": "string",
-        "description": "Phoenix OTLP HTTP endpoint base URL (default: http://localhost:4318)"
+        "description": "Phoenix REST API base URL (default: http://localhost:6006)"
       },
       "projectName": {
         "type": "string",
@@ -20,9 +20,9 @@
   },
   "uiHints": {
     "phoenixUrl": {
-      "label": "Phoenix OTLP URL",
-      "placeholder": "http://localhost:4318",
-      "help": "Base URL of your Phoenix OTLP HTTP endpoint"
+      "label": "Phoenix URL",
+      "placeholder": "http://localhost:6006",
+      "help": "Base URL of your Phoenix instance (REST API, same port as the UI)"
     },
     "projectName": {
       "label": "Project Name",

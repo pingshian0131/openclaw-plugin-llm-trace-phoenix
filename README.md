@@ -15,7 +15,9 @@ Every time any of your OpenClaw agents calls an AI model, Phoenix records:
 
 ## How it works
 
-The plugin hooks into OpenClaw's `llm_input` and `llm_output` plugin events, then forwards traces to Phoenix via the [OTLP/HTTP](https://opentelemetry.io/docs/specs/otlp/) protocol using the [OpenInference](https://github.com/Arize-ai/openinference) semantic conventions — the same format Phoenix natively understands.
+The plugin hooks into OpenClaw's `llm_input` and `llm_output` plugin events, then forwards traces to Phoenix via Phoenix's **native REST API** (`/v1/projects/:project/spans`) using the [OpenInference](https://github.com/Arize-ai/openinference) semantic conventions — the same format Phoenix natively understands.
+
+> **Note:** This plugin uses Phoenix's REST API on port **6006** (same as the UI), **not** the OpenTelemetry OTLP/HTTP endpoint on port 4318.
 
 No proxy, no traffic interception, no changes to your agents.
 
@@ -72,7 +74,7 @@ Add this to the `plugins.entries` section of `~/.openclaw/openclaw.json`:
 "llm-trace-phoenix": {
   "enabled": true,
   "config": {
-    "phoenixUrl": "http://localhost:4318",
+    "phoenixUrl": "http://localhost:6006",
     "projectName": "openclaw"
   }
 }
@@ -99,14 +101,14 @@ Verify the plugin loaded:
 
 ```bash
 grep phoenix ~/.openclaw/logs/gateway.log
-# [gateway] [phoenix] tracing → http://localhost:4318 (project: openclaw)
+# [gateway] [phoenix] tracing → http://localhost:6006 (project: openclaw)
 ```
 
 ## Configuration
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `phoenixUrl` | `http://localhost:4318` | OTLP/HTTP endpoint base URL |
+| `phoenixUrl` | `http://localhost:6006` | Phoenix REST API base URL (same port as the UI) |
 | `projectName` | `openclaw` | Project name shown in Phoenix UI |
 
 ## Viewing traces
