@@ -119,6 +119,23 @@ grep phoenix ~/.openclaw/logs/gateway.log
 
 Each trace shows the span name `provider/model` (e.g. `anthropic/claude-opus-4-6`) and all attributes listed above.
 
+## Privacy
+
+This plugin forwards **all LLM call content** to your configured Phoenix instance, including:
+
+- System prompts and conversation history
+- User prompts and assistant responses
+- Session ID and agent ID
+
+**Data stays on your infrastructure.** The default `phoenixUrl` points to `http://localhost:6006` — traces never leave your machine unless you explicitly point it at a remote host.
+
+If you configure a remote `phoenixUrl`:
+- Use HTTPS to encrypt data in transit (e.g. `https://phoenix.yourcompany.com`)
+- Ensure access to your Phoenix instance is properly restricted
+- Be aware that conversation content (which may include sensitive information) will be stored on that remote host
+
+This plugin sends data **only** to the Phoenix endpoint you configure. No data is sent to any third party, including the plugin author.
+
 ## License
 
 MIT
