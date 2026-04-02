@@ -2,7 +2,7 @@
   "id": "llm-trace-phoenix",
   "name": "LLM Trace → Phoenix",
   "description": "Send all LLM input/output traces to Arize Phoenix for observability. View prompts, responses, and token usage in Phoenix UI.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "kind": "integration",
   "configSchema": {
     "type": "object",
