@@ -59,49 +59,29 @@ Phoenix UI will be available at `http://localhost:6006`.
 
 ### 2. Install the plugin
 
-Copy the plugin files into your OpenClaw extensions directory:
+```bash
+openclaw plugins install clawhub:llm-trace-phoenix
+```
+
+This automatically installs the plugin and adds it to your `~/.openclaw/openclaw.json`.
+
+### 3. Restart OpenClaw
 
 ```bash
-git clone https://github.com/pingshian0131/openclaw-plugin-llm-trace-phoenix \
-  ~/.openclaw/extensions/llm-trace-phoenix
-```
-
-### 3. Register in openclaw.json
-
-Add this to the `plugins.entries` section of `~/.openclaw/openclaw.json`:
-
-```json
-"llm-trace-phoenix": {
-  "enabled": true,
-  "config": {
-    "phoenixUrl": "http://localhost:6006",
-    "projectName": "openclaw"
-  }
-}
-```
-
-Also add it to `plugins.allow`:
-
-```json
-"allow": ["llm-trace-phoenix"]
-```
-
-### 4. Restart OpenClaw
-
-```bash
-# macOS (launchd)
-launchctl unload ~/Library/LaunchAgents/ai.openclaw.gateway.plist
-launchctl load ~/Library/LaunchAgents/ai.openclaw.gateway.plist
-
-# Docker
-docker restart <your-openclaw-container>
+openclaw gateway restart
 ```
 
 Verify the plugin loaded:
 
 ```bash
-grep phoenix ~/.openclaw/logs/gateway.log
-# [gateway] [phoenix] tracing → http://localhost:6006 (project: openclaw)
+openclaw gateway status
+```
+
+Or check the logs:
+
+```bash
+openclaw logs | grep phoenix
+# [phoenix] tracing → http://localhost:6006 (project: openclaw)
 ```
 
 ## Configuration
