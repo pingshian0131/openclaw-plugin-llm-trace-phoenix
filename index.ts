@@ -4,14 +4,7 @@
  * traces to Arize Phoenix via its native REST API (/v1/projects/:project/spans).
  */
 
-import type {
-  OpenClawPluginApi,
-  PluginHookLlmInputEvent,
-  PluginHookLlmOutputEvent,
-  PluginHookAgentContext,
-} from "openclaw/plugin-sdk";
-
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Minimal local types (mirrors openclaw/plugin-sdk hook-types) ─────────────
 
 interface PluginConfig {
   phoenixUrl?: string;
@@ -27,6 +20,46 @@ interface PendingInput {
   historyMessages: unknown[];
   sessionId: string;
   agentId?: string;
+}
+
+interface LlmInputEvent {
+  runId: string;
+  sessionId: string;
+  provider: string;
+  model: string;
+  systemPrompt?: string;
+  prompt: string;
+  historyMessages: unknown[];
+}
+
+interface LlmOutputEvent {
+  runId: string;
+  sessionId: string;
+  provider: string;
+  model: string;
+  assistantTexts: string[];
+  usage?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    total?: number;
+  };
+}
+
+interface AgentContext {
+  agentId?: string;
+}
+
+interface PluginApi {
+  pluginConfig?: unknown;
+  logger: {
+    info(msg: string): void;
+    warn(msg: string): void;
+  };
+  on(event: "llm_input", handler: (event: LlmInputEvent, ctx: AgentContext) => void | Promise<void>): void;
+  on(event: "llm_output", handler: (event: LlmOutputEvent, ctx: AgentContext) => void | Promise<void>): void;
+  on(event: string, handler: (...args: unknown[]) => unknown): void;
 }
 
 // ── In-memory store for pending LLM inputs (keyed by runId) ─────────────────
@@ -76,7 +109,7 @@ async function sendTrace(
   phoenixUrl: string,
   projectName: string,
   input: PendingInput,
-  output: PluginHookLlmOutputEvent,
+  output: LlmOutputEvent,
   endTime: number
 ): Promise<void> {
   const traceId = toHex(output.runId, 32);
@@ -143,7 +176,7 @@ async function sendTrace(
 
 // ── Plugin entry point ────────────────────────────────────────────────────────
 
-export default function plugin(api: OpenClawPluginApi): void {
+export default function plugin(api: PluginApi): void {
   const cfg = (api.pluginConfig ?? {}) as PluginConfig;
   const phoenixUrl = (cfg.phoenixUrl ?? "http://localhost:6006").replace(/\/$/, "");
   const projectName = cfg.projectName ?? "openclaw";
@@ -151,7 +184,7 @@ export default function plugin(api: OpenClawPluginApi): void {
   api.logger.info(`[phoenix] tracing → ${phoenixUrl} (project: ${projectName})`);
 
   // Capture LLM input (before model call)
-  api.on("llm_input", (event: PluginHookLlmInputEvent, _ctx: PluginHookAgentContext) => {
+  api.on("llm_input", (event: LlmInputEvent, _ctx: AgentContext) => {
     pendingInputs.set(event.runId, {
       startTime: Date.now(),
       provider: event.provider,
@@ -165,7 +198,7 @@ export default function plugin(api: OpenClawPluginApi): void {
   });
 
   // Capture LLM output (after model call) and send to Phoenix
-  api.on("llm_output", async (event: PluginHookLlmOutputEvent, _ctx: PluginHookAgentContext) => {
+  api.on("llm_output", async (event: LlmOutputEvent, _ctx: AgentContext) => {
     const input = pendingInputs.get(event.runId);
     if (!input) return;
     pendingInputs.delete(event.runId);
