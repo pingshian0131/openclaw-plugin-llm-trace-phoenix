@@ -78,12 +78,12 @@ function toIso(ms: number): string {
   return new Date(ms).toISOString();
 }
 
-/** Build an OpenInference-compatible messages array as a JSON string. */
-function buildMessages(
+/** Build a flat messages array for internal use. */
+function buildMessageList(
   systemPrompt: string | undefined,
   history: unknown[],
   userPrompt: string
-): string {
+): Array<{ role: string; content: string }> {
   const msgs: Array<{ role: string; content: string }> = [];
 
   if (systemPrompt) {
@@ -100,7 +100,22 @@ function buildMessages(
   }
 
   msgs.push({ role: "user", content: userPrompt });
-  return JSON.stringify(msgs);
+  return msgs;
+}
+
+/**
+ * Expand messages into Phoenix's expected indexed flat attributes.
+ * Phoenix uses OpenInference: llm.input_messages.N.message.role/content
+ */
+function expandMessages(
+  prefix: string,
+  msgs: Array<{ role: string; content: string }>,
+  out: Record<string, unknown>
+): void {
+  for (let i = 0; i < msgs.length; i++) {
+    out[`${prefix}.${i}.message.role`] = msgs[i].role;
+    out[`${prefix}.${i}.message.content`] = msgs[i].content;
+  }
 }
 
 // ── Phoenix REST sender ───────────────────────────────────────────────────────
@@ -115,27 +130,27 @@ async function sendTrace(
   const traceId = toHex(output.runId, 32);
   const spanId = toHex(output.runId, 16);
 
-  const inputMessages = buildMessages(
+  const inputMsgs = buildMessageList(
     input.systemPrompt,
     input.historyMessages,
     input.prompt
   );
+  const outputMsgs = output.assistantTexts.map((t) => ({ role: "assistant", content: t }));
   const outputText = output.assistantTexts.join("\n");
-  const outputMessages = JSON.stringify(
-    output.assistantTexts.map((t) => ({ role: "assistant", content: t }))
-  );
 
-  // Phoenix REST API uses a flat attributes object (not OTLP array format)
+  // Phoenix REST API: flat attributes object with OpenInference indexed message keys
   const attributes: Record<string, unknown> = {
     "openinference.span.kind": "LLM",
     "llm.model_name": output.model,
     "llm.provider": output.provider,
-    "input.value": inputMessages,
+    "input.value": inputMsgs.at(-1)?.content ?? "",
     "output.value": outputText,
-    "llm.input_messages": inputMessages,
-    "llm.output_messages": outputMessages,
     "session.id": input.sessionId,
   };
+
+  // Expand messages into indexed keys Phoenix can render in the UI
+  expandMessages("llm.input_messages", inputMsgs, attributes);
+  expandMessages("llm.output_messages", outputMsgs, attributes);
 
   if (input.agentId) attributes["tag.agent_id"] = input.agentId;
   if (output.usage?.input != null) attributes["llm.token_count.prompt"] = output.usage.input;
