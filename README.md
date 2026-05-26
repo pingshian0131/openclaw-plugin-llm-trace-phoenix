@@ -1,34 +1,36 @@
-# openclaw-plugin-llm-trace-phoenix
+# llm-trace-phoenix
 
-An [OpenClaw](https://github.com/openclaw/openclaw) plugin that intercepts every LLM call and sends a full trace to [Arize Phoenix](https://github.com/Arize-ai/phoenix) — so you can inspect prompts, responses, and token usage in a clean UI.
+Send every LLM call to [Arize Phoenix](https://github.com/Arize-ai/phoenix) for observability — prompts, responses, token usage, latency. Supports both **[OpenClaw](https://github.com/openclaw/openclaw)** and **[Hermes](https://github.com/NousResearch/hermes-agent)**.
+
+| Platform | Language | Location |
+|----------|----------|----------|
+| OpenClaw | TypeScript | `index.ts` (root) |
+| Hermes | Python | `hermes/__init__.py` |
+
+Both implementations use Phoenix's native REST API (`/v1/projects/:project/spans`) with [OpenInference](https://github.com/Arize-ai/openinference) semantic conventions.
 
 ## What you get
 
-Every time any of your OpenClaw agents calls an AI model, Phoenix records:
+Every LLM call is recorded in Phoenix with:
 
-- **Full input** — system prompt + conversation history + user prompt
-- **Full output** — complete assistant response
-- **Token usage** — input / output / total / cache read / cache write
+- **Token usage** — input / output / total tokens
 - **Model & provider** — which model was used
-- **Agent ID** — which agent made the call
 - **Latency** — wall-clock time for the LLM call
+- **Session ID** — conversation context
 
-## How it works
+OpenClaw additionally captures full prompts, responses, and message history.
 
-The plugin hooks into OpenClaw's `llm_input` and `llm_output` plugin events, then forwards traces to Phoenix via Phoenix's **native REST API** (`/v1/projects/:project/spans`) using the [OpenInference](https://github.com/Arize-ai/openinference) semantic conventions — the same format Phoenix natively understands.
-
-> **Note:** This plugin uses Phoenix's REST API on port **6006** (same as the UI), **not** the OpenTelemetry OTLP/HTTP endpoint on port 4318.
-
-No proxy, no traffic interception, no changes to your agents.
+> **Note:** This plugin uses Phoenix's REST API on port **6006** (same as the UI), **not** the OTLP/HTTP endpoint on port 4318.
 
 ## Requirements
 
-- OpenClaw 2025+ (Plugin SDK with `llm_input` / `llm_output` hooks)
 - A running Phoenix instance (self-hosted Docker or [Arize Cloud](https://app.phoenix.arize.com))
+- **OpenClaw:** OpenClaw 2025+ (Plugin SDK with `llm_input` / `llm_output` hooks)
+- **Hermes:** Hermes with `pre_api_request` / `post_api_request` plugin hooks
 
 ## Setup
 
-### 1. Run Phoenix
+### 0. Run Phoenix
 
 The easiest way is Docker. Add this to your `docker-compose.yml`:
 
@@ -57,47 +59,65 @@ docker compose up -d phoenix
 
 Phoenix UI will be available at `http://localhost:6006`.
 
-### 2. Install the plugin
+### OpenClaw
+
+**Install:**
 
 ```bash
 openclaw plugins install clawhub:llm-trace-phoenix
-```
-
-This automatically installs the plugin and adds it to your `~/.openclaw/openclaw.json`.
-
-### 3. Restart OpenClaw
-
-```bash
 openclaw gateway restart
 ```
 
-Verify the plugin loaded:
-
-```bash
-openclaw gateway status
-```
-
-Or check the logs:
+Verify:
 
 ```bash
 openclaw logs | grep phoenix
 # [phoenix] tracing → http://localhost:6006 (project: openclaw)
 ```
 
-## Configuration
+**Configuration** (in `~/.openclaw/openclaw.json`):
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `phoenixUrl` | `http://localhost:6006` | Phoenix REST API base URL (same port as the UI) |
+| `phoenixUrl` | `http://localhost:6006` | Phoenix REST API base URL |
 | `projectName` | `openclaw` | Project name shown in Phoenix UI |
+
+### Hermes
+
+**Install:**
+
+```bash
+cp -r hermes/ ~/.hermes/hermes-agent/plugins/observability/phoenix/
+```
+
+Then enable in `~/.hermes/config.yaml`:
+
+```yaml
+plugins:
+  enabled:
+    - observability/phoenix
+```
+
+Restart Hermes gateway:
+
+```bash
+launchctl stop ai.hermes.gateway && launchctl start ai.hermes.gateway
+```
+
+**Configuration** (env vars in `~/.hermes/.env`):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HERMES_PHOENIX_URL` | `http://localhost:6006` | Phoenix REST API base URL |
+| `HERMES_PHOENIX_PROJECT` | `hermes` | Project name shown in Phoenix UI |
 
 ## Viewing traces
 
 1. Open **http://localhost:6006**
-2. Select the `openclaw` project from the sidebar
-3. Talk to any agent — traces appear within seconds
+2. Select your project (`openclaw` or `hermes`) from the sidebar
+3. Make any LLM call — traces appear within seconds
 
-Each trace shows the span name `provider/model` (e.g. `anthropic/claude-opus-4-6`) and all attributes listed above.
+Each trace shows the span name `provider/model` (e.g. `anthropic/claude-sonnet-4-6`) and token counts.
 
 ## Privacy
 

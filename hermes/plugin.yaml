@@ -1,0 +1,7 @@
+name: phoenix
+version: "1.1.0"
+description: "Arize Phoenix observability for Hermes — traces LLM calls with token usage via Phoenix REST API."
+author: pingshian0131
+hooks:
+  - pre_api_request
+  - post_api_request
