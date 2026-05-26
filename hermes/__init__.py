@@ -1,7 +1,10 @@
 """phoenix — Hermes plugin for Arize Phoenix observability.
 
-One span per LLM API call, sent after the call completes.
-Uses pre_api_request / post_api_request hooks so token usage is available.
+One span per LLM call, sent after the call completes.
+Uses three hooks to capture both conversation content and token usage:
+  pre_llm_call    → start time, user message, conversation history
+  post_api_request → token usage (input_tokens / output_tokens)
+  post_llm_call   → assistant response, finalize and send trace
 
 Required env vars (set in ~/.hermes/.env):
   HERMES_PHOENIX_URL     - Phoenix base URL (default: http://localhost:6006)
@@ -18,7 +21,7 @@ import time
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +46,31 @@ def _iso(ts: float) -> str:
 
 
 def _make_id(seed: str, length: int) -> str:
-    """Deterministic hex ID from arbitrary string via SHA-256."""
     return hashlib.sha256(seed.encode()).hexdigest()[:length]
+
+
+def _extract_messages(history: Any) -> List[Dict[str, str]]:
+    if not isinstance(history, list):
+        return []
+    result = []
+    for m in history:
+        if not isinstance(m, dict):
+            continue
+        role = m.get("role", "")
+        if role not in ("system", "user", "assistant", "tool"):
+            continue
+        content = m.get("content")
+        if isinstance(content, list):
+            text = " ".join(
+                p.get("text", "") for p in content
+                if isinstance(p, dict) and p.get("type") == "text"
+            )
+        elif content is None:
+            text = ""
+        else:
+            text = str(content)
+        result.append({"role": role, "content": text[:6000]})
+    return result
 
 
 def _send_to_phoenix(payload: dict) -> None:
@@ -70,31 +96,54 @@ def _send_async(payload: dict) -> None:
     t.start()
 
 
-def _on_pre_api_request(
+# ── Hook 1: capture start time + conversation context ────────────────────────
+
+def _on_pre_llm_call(
     *,
     session_id: str = "",
+    user_message: str = "",
+    conversation_history: Any = None,
     model: str = "",
-    provider: str = "",
     platform: str = "",
     **_kwargs: Any,
 ) -> None:
     with _LOCK:
         _PENDING[session_id] = {
             "start_time": time.time(),
-            "session_id": session_id,
+            "user_message": user_message,
+            "conversation_history": conversation_history,
             "model": model,
-            "provider": provider,
             "platform": platform,
+            "usage": None,
         }
 
+
+# ── Hook 2: capture token usage from raw API response ────────────────────────
 
 def _on_post_api_request(
     *,
     session_id: str = "",
-    model: str = "",
-    provider: str = "",
-    platform: str = "",
     usage: Optional[Dict[str, Any]] = None,
+    provider: str = "",
+    **_kwargs: Any,
+) -> None:
+    with _LOCK:
+        pending = _PENDING.get(session_id)
+        if pending is not None:
+            pending["usage"] = usage
+            if provider:
+                pending["provider"] = provider
+
+
+# ── Hook 3: finalize and send trace ──────────────────────────────────────────
+
+def _on_post_llm_call(
+    *,
+    session_id: str = "",
+    assistant_response: str = "",
+    conversation_history: Any = None,
+    model: str = "",
+    platform: str = "",
     **_kwargs: Any,
 ) -> None:
     end_time = time.time()
@@ -103,18 +152,31 @@ def _on_post_api_request(
         pending = _PENDING.pop(session_id, None)
 
     start_time = pending["start_time"] if pending else end_time
+    user_message = (pending or {}).get("user_message", "")
+    history = (pending or {}).get("conversation_history") or conversation_history
     effective_model = model or (pending or {}).get("model", "")
-    effective_provider = provider or (pending or {}).get("provider", "")
+    effective_provider = (pending or {}).get("provider", "")
+    usage = (pending or {}).get("usage")
+
+    messages = _extract_messages(history)
+    if assistant_response:
+        messages.append({"role": "assistant", "content": str(assistant_response)[:6000]})
 
     attributes: Dict[str, Any] = {
         "openinference.span.kind": "LLM",
         "llm.model_name": effective_model,
         "llm.provider": effective_provider,
+        "input.value": user_message[:4000],
+        "output.value": str(assistant_response)[:4000],
         "session.id": session_id,
         "tag.platform": platform,
     }
 
-    # Token counts from post_api_request usage field
+    for i, m in enumerate(messages):
+        attributes[f"llm.input_messages.{i}.message.role"] = m["role"]
+        attributes[f"llm.input_messages.{i}.message.content"] = m["content"]
+
+    # Token counts from post_api_request
     if isinstance(usage, dict):
         input_tokens = usage.get("input_tokens") or usage.get("prompt_tokens")
         output_tokens = usage.get("output_tokens") or usage.get("completion_tokens")
@@ -145,5 +207,6 @@ def _on_post_api_request(
 
 
 def register(ctx) -> None:
-    ctx.register_hook("pre_api_request", _on_pre_api_request)
+    ctx.register_hook("pre_llm_call", _on_pre_llm_call)
     ctx.register_hook("post_api_request", _on_post_api_request)
+    ctx.register_hook("post_llm_call", _on_post_llm_call)
